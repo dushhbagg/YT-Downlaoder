@@ -29,7 +29,9 @@ def yt_dlp_base_opts():
         'fragment_retries': 3,
         'extractor_retries': 3,
         'socket_timeout': 20,
-        'js_runtimes': ['quickjs'],
+        'js_runtimes': {
+            'quickjs': {}
+        },
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'ios']
