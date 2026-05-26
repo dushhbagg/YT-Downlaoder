@@ -21,9 +21,14 @@ def get_video_url():
 
 def yt_dlp_base_opts():
     cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    print("--- YT-DLP INITIALIZATION LOGS ---")
+    print(f"Checking for cookies at: {cookies_path}")
+    exists = os.path.exists(cookies_path)
+    print(f"Cookies file exists: {exists}")
+    
     opts = {
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': False,  # Changed to False to get full logs on Render
+        'no_warnings': False,
         'noplaylist': True,
         'retries': 3,
         'fragment_retries': 3,
@@ -39,9 +44,15 @@ def yt_dlp_base_opts():
         },
     }
     
-    if os.path.exists(cookies_path):
+    if exists:
+        file_size = os.path.getsize(cookies_path)
+        print(f"Cookies file size: {file_size} bytes")
         opts['cookiefile'] = cookies_path
+        print("Loaded 'cookiefile' into ydl_opts successfully.")
+    else:
+        print("WARNING: cookies.txt was NOT loaded because the file does not exist at the path.")
         
+    print("---------------------------------")
     return opts
 
 @app.route('/info', methods=['GET'])
