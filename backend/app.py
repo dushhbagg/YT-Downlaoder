@@ -20,7 +20,8 @@ def get_video_url():
     return video_url
 
 def yt_dlp_base_opts():
-    return {
+    cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+    opts = {
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
@@ -42,6 +43,11 @@ def yt_dlp_base_opts():
             'Accept-Language': 'en-US,en;q=0.9',
         },
     }
+    
+    if os.path.exists(cookies_path):
+        opts['cookiefile'] = cookies_path
+        
+    return opts
 
 @app.route('/info', methods=['GET'])
 def get_info():
