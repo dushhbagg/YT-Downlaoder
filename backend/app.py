@@ -134,7 +134,7 @@ def start_download():
                     'preferredcodec': 'm4a',
                 }]
             else:
-                ydl_opts['merge_output_format'] = 'mkv'
+                ydl_opts['merge_output_format'] = 'mp4'
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
