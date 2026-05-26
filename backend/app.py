@@ -6,10 +6,13 @@ from flask_cors import CORS
 import yt_dlp
 import tempfile
 import uuid
-import imageio_ffmpeg
+import static_ffmpeg
 
 app = Flask(__name__)
 CORS(app)
+
+# Automatically download and register static ffmpeg and ffprobe in PATH
+static_ffmpeg.add_paths(weak=True)
 
 progress_store = {}
 
@@ -121,7 +124,6 @@ def start_download():
                 **yt_dlp_base_opts(),
                 'format': selected_format,
                 'outtmpl': output_template,
-                'ffmpeg_location': imageio_ffmpeg.get_ffmpeg_exe(),
                 'progress_hooks': [progress_hook],
                 'concurrent_fragment_downloads': 10
             }
