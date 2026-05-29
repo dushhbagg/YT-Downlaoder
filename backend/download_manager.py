@@ -132,9 +132,19 @@ def start_download_job(url, format_id, download_type, ext, base_opts, bitrate=No
                 # Ensure correct format structure is selected
                 pass
                 
-            # Execute yt-dlp extract & download
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+            # Execute yt-dlp extract & download with self-healing anonymous fallback
+            info = None
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+            except Exception as download_error:
+                if 'cookiefile' in ydl_opts:
+                    print("Download failed with cookies, attempting self-healing anonymous fallback... Error:", str(download_error))
+                    del ydl_opts['cookiefile']
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                else:
+                    raise download_error
                 
                 # Determine final file location. Note that postprocessors/mergers 
                 # might change final extension (e.g. merging to .mp4 or re-encoding to .mp3)

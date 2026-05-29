@@ -59,12 +59,28 @@ def get_info():
     if not video_url:
         return jsonify({'error': 'Valid HTTP URL required'}), 400
 
+    # 1. Primary attempt: Query with cookies enabled
     try:
         details = youtube_extractor.extract_video_details(video_url, yt_dlp_base_opts())
         return jsonify(details)
     except Exception as e:
-        print("Info fetch error:", str(e))
-        return jsonify({'error': 'Failed to retrieve video info', 'details': str(e)}), 500
+        print("Primary info fetch failed, attempting self-healing anonymous fallback... Error details:", str(e))
+        
+        # 2. Fallback attempt: Strip cookies and query anonymously using mobile player clients
+        try:
+            opts = yt_dlp_base_opts()
+            if 'cookiefile' in opts:
+                del opts['cookiefile']
+                
+            details = youtube_extractor.extract_video_details(video_url, opts)
+            print("Anonymous fallback succeeded!")
+            return jsonify(details)
+        except Exception as fallback_e:
+            print("Anonymous fallback also failed. Error details:", str(fallback_e))
+            return jsonify({
+                'error': 'Failed to retrieve video info', 
+                'details': f"Primary error (with cookies): {str(e)}. Fallback error (anonymous): {str(fallback_e)}"
+            }), 500
 
 @app.route('/start_download', methods=['GET'])
 def start_download():
