@@ -138,41 +138,66 @@ def start_download_job(url, format_id, download_type, ext, base_opts, bitrate=No
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
             except Exception as download_error:
-                if 'cookiefile' in ydl_opts:
-                    print("Download failed with cookies, attempting self-healing anonymous fallback... Error:", str(download_error))
-                    del ydl_opts['cookiefile']
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(url, download=True)
-                else:
-                    raise download_error
+                err_str = str(download_error)
+                impersonate_err = "Impersonate target" in err_str or "impersonate" in err_str.lower()
                 
-                # Determine final file location. Note that postprocessors/mergers 
-                # might change final extension (e.g. merging to .mp4 or re-encoding to .mp3)
+                if impersonate_err and 'impersonate' in ydl_opts:
+                    print("Download failed with impersonate target error. Retrying without impersonate...")
+                    del ydl_opts['impersonate']
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            info = ydl.extract_info(url, download=True)
+                    except Exception as retry_err:
+                        download_error = retry_err
+                
+                if not info:
+                    if 'cookiefile' in ydl_opts:
+                        print("Download failed with cookies, attempting self-healing anonymous fallback... Error:", str(download_error))
+                        del ydl_opts['cookiefile']
+                        if impersonate_err and 'impersonate' in ydl_opts:
+                            del ydl_opts['impersonate']
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info = ydl.extract_info(url, download=True)
+                        except Exception as fallback_err:
+                            fallback_err_str = str(fallback_err)
+                            if ("Impersonate target" in fallback_err_str or "impersonate" in fallback_err_str.lower()) and 'impersonate' in ydl_opts:
+                                del ydl_opts['impersonate']
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                    info = ydl.extract_info(url, download=True)
+                            else:
+                                raise fallback_err
+                    else:
+                        raise download_error
+                
+            # Determine final file location. Note that postprocessors/mergers 
+            # might change final extension (e.g. merging to .mp4 or re-encoding to .mp3)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 expected_filename = ydl.prepare_filename(info)
-                file_base = os.path.splitext(expected_filename)[0]
+            file_base = os.path.splitext(expected_filename)[0]
+            
+            matches = glob.glob(f"{file_base}.*")
+            if matches:
+                # Prioritize exact extension match
+                matches.sort(key=lambda x: 0 if x.endswith(f".{ext}") else 1)
+                filepath = matches[0]
+            else:
+                filepath = expected_filename
                 
-                matches = glob.glob(f"{file_base}.*")
-                if matches:
-                    # Prioritize exact extension match
-                    matches.sort(key=lambda x: 0 if x.endswith(f".{ext}") else 1)
-                    filepath = matches[0]
-                else:
-                    filepath = expected_filename
-                    
-                title = info.get('title', 'video')
-                safe_title = "".join(x for x in title if x.isalnum() or x in " -_")
-                if not safe_title.strip():
-                    safe_title = "downloaded_file"
-                    
-                # Mark job as fully completed
-                progress_store[job_id].update({
-                    'status': 'completed',
-                    'percent': 100,
-                    'filepath': filepath,
-                    'title': safe_title,
-                    'ext': ext or os.path.splitext(filepath)[1].replace('.', '')
-                })
+            title = info.get('title', 'video')
+            safe_title = "".join(x for x in title if x.isalnum() or x in " -_")
+            if not safe_title.strip():
+                safe_title = "downloaded_file"
                 
+            # Mark job as fully completed
+            progress_store[job_id].update({
+                'status': 'completed',
+                'percent': 100,
+                'filepath': filepath,
+                'title': safe_title,
+                'ext': ext or os.path.splitext(filepath)[1].replace('.', '')
+            })
+            
         except DownloadCancelledException:
             # Handle cancellation graceful exit
             progress_store[job_id].update({

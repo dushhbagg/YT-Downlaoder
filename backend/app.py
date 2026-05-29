@@ -26,6 +26,9 @@ CORS(app)
 # Automatically download and register static ffmpeg and ffprobe in PATH
 static_ffmpeg.add_paths(weak=True)
 
+# Global flag to track if tls impersonation is supported by current environment
+_impersonate_failed = False
+
 def get_video_url():
     """Extract and validate the YouTube video URL from query parameters."""
     video_url = (request.args.get('url') or '').strip()
@@ -50,9 +53,6 @@ def yt_dlp_base_opts(cookies_source=None):
         'extractor_retries': 3,
         'socket_timeout': 20,
         
-        # STATE-OF-THE-ART BYPASS: Spoof TLS fingerprints & client signatures (Chrome / Web)
-        'impersonate': 'chrome',
-        
         # Spoof standard Chrome headers to bypass bot gates
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -74,6 +74,10 @@ def yt_dlp_base_opts(cookies_source=None):
             }
         },
     }
+    
+    # Enable impersonate only if curl_cffi / impersonation targets are supported on host
+    if not _impersonate_failed:
+        opts['impersonate'] = 'chrome'
     
     # Configure cookies based on source parameters
     if cookies_source in ['chrome', 'edge', 'firefox', 'safari', 'opera']:
@@ -168,6 +172,7 @@ def validate_and_analyze_cookies():
 @app.route('/info', methods=['GET'])
 def get_info():
     """Returns detailed metadata and categorized download options for a YouTube video URL."""
+    global _impersonate_failed
     video_url = get_video_url()
     if not video_url:
         return jsonify({'error': 'Valid HTTP URL required'}), 400
@@ -175,43 +180,78 @@ def get_info():
     cookies_source = request.args.get('cookies_source', 'cookies_txt')
     opts = yt_dlp_base_opts(cookies_source)
 
-    # 1. Primary attempt: Query with requested cookie configuration
     try:
-        details = youtube_extractor.extract_video_details(video_url, opts)
-        return jsonify(details)
-    except Exception as e:
-        print("Primary info fetch failed, attempting self-healing anonymous fallback... Error details:", str(e))
-        
-        # 2. Fallback attempt: Strip cookies completely and query anonymously using mobile player clients
+        # 1. Primary attempt: Query with requested cookie configuration
         try:
+            details = youtube_extractor.extract_video_details(video_url, opts)
+            return jsonify(details)
+        except Exception as e:
+            err_str = str(e)
+            if "Impersonate target" in err_str or "impersonate" in err_str.lower():
+                print("Impersonate error detected in primary. Disabling impersonate and retrying...")
+                _impersonate_failed = True
+                raise e
+                
+            print("Primary info fetch failed, attempting self-healing anonymous fallback... Error details:", err_str)
+            
+            # 2. Fallback attempt: Strip cookies completely and query anonymously using mobile player clients
             fallback_opts = opts.copy()
             if 'cookiefile' in fallback_opts:
                 del fallback_opts['cookiefile']
             if 'cookiesfrombrowser' in fallback_opts:
                 del fallback_opts['cookiesfrombrowser']
                 
-            details = youtube_extractor.extract_video_details(video_url, fallback_opts)
-            print("Anonymous fallback succeeded!")
-            return jsonify(details)
-        except Exception as fallback_e:
-            print("Anonymous fallback also failed. Error details:", str(fallback_e))
-            
-            # Map specific exceptions to user-friendly error messages
-            err_msg = str(fallback_e)
-            user_friendly = "Failed to parse video info. YouTube blocked the connection."
-            if "Sign in" in err_msg:
-                user_friendly = "YouTube bot gate triggered. Logged-in session cookies required."
-            elif "Incomplete YouTube ID" in err_msg or "Video unavailable" in err_msg:
-                user_friendly = "This video is unavailable. Please verify the URL."
-            elif "Private video" in err_msg:
-                user_friendly = "This is a private video. Cookie credentials are required."
-            elif "429" in err_msg:
-                user_friendly = "Rate limit reached. Please wait a few seconds and try again."
+            try:
+                details = youtube_extractor.extract_video_details(video_url, fallback_opts)
+                print("Anonymous fallback succeeded!")
+                return jsonify(details)
+            except Exception as fallback_e:
+                fallback_err_str = str(fallback_e)
+                if "Impersonate target" in fallback_err_str or "impersonate" in fallback_err_str.lower():
+                    print("Impersonate error detected in fallback. Disabling impersonate and retrying...")
+                    _impersonate_failed = True
+                    raise fallback_e
+                raise fallback_e
+    except Exception as outer_e:
+        # If we triggered a retry due to impersonation failure, re-run with impersonate disabled
+        if _impersonate_failed and "impersonate" in str(outer_e).lower():
+            print("Retrying info fetch with disabled impersonation target...")
+            clean_opts = yt_dlp_base_opts(cookies_source)
+            try:
+                # Primary clean attempt
+                details = youtube_extractor.extract_video_details(video_url, clean_opts)
+                return jsonify(details)
+            except Exception as clean_e:
+                print("Clean primary fetch failed, attempting clean fallback... Error:", str(clean_e))
+                # Fallback clean attempt
+                try:
+                    clean_fallback_opts = clean_opts.copy()
+                    if 'cookiefile' in clean_fallback_opts:
+                        del clean_fallback_opts['cookiefile']
+                    if 'cookiesfrombrowser' in clean_fallback_opts:
+                        del clean_fallback_opts['cookiesfrombrowser']
+                    details = youtube_extractor.extract_video_details(video_url, clean_fallback_opts)
+                    print("Clean anonymous fallback succeeded!")
+                    return jsonify(details)
+                except Exception as clean_fallback_e:
+                    outer_e = clean_fallback_e
+        
+        # Map specific exceptions to user-friendly error messages
+        err_msg = str(outer_e)
+        user_friendly = "Failed to parse video info. YouTube blocked the connection."
+        if "Sign in" in err_msg:
+            user_friendly = "YouTube bot gate triggered. Logged-in session cookies required."
+        elif "Incomplete YouTube ID" in err_msg or "Video unavailable" in err_msg:
+            user_friendly = "This video is unavailable. Please verify the URL."
+        elif "Private video" in err_msg:
+            user_friendly = "This is a private video. Cookie credentials are required."
+        elif "429" in err_msg:
+            user_friendly = "Rate limit reached. Please wait a few seconds and try again."
 
-            return jsonify({
-                'error': user_friendly, 
-                'details': f"Primary error (with cookies): {str(e)}. Fallback error (anonymous): {str(fallback_e)}"
-            }), 500
+        return jsonify({
+            'error': user_friendly, 
+            'details': f"Failed to retrieve video details. Error context: {err_msg}"
+        }), 500
 
 @app.route('/start_download', methods=['GET'])
 def start_download():
