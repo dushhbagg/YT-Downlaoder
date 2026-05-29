@@ -1,18 +1,59 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
+  /* DARK THEME (DEFAULT) */
+  --bg-color: #050508;
+  --surface-color: rgba(13, 13, 20, 0.8);
+  --surface-hover: rgba(22, 22, 35, 0.85);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 0, 77, 0.4);
+  
   --primary: #FF004D;
   --primary-hover: #E60045;
   --secondary: #6B21A8;
-  --bg-color: #000000;
-  --surface-color: #0c0c0c;
-  --text-main: #FFFFFF;
-  --text-secondary: #8A8A93;
   --accent: #E11D48;
-  --border-color: #1f1f1f;
-  --danger: #ef4444;
-  --glow-primary: rgba(255, 0, 77, 0.3);
-  --glow-secondary: rgba(107, 33, 168, 0.3);
+  
+  --text-main: #FFFFFF;
+  --text-secondary: #9E9EAF;
+  --text-muted: #62627A;
+  
+  --glow-primary: rgba(255, 0, 77, 0.25);
+  --glow-secondary: rgba(107, 33, 168, 0.25);
+  --glow-card: rgba(0, 0, 0, 0.6);
+  
+  --success: #10B981;
+  --danger: #EF4444;
+  --warning: #F59E0B;
+  --info-blue: #3B82F6;
+  
+  --card-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  --blur-amount: 16px;
+  --transition-speed: 0.3s;
+}
+
+[data-theme="light"] {
+  /* LIGHT THEME */
+  --bg-color: #F8F9FD;
+  --surface-color: rgba(255, 255, 255, 0.85);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --border-color: rgba(0, 0, 0, 0.06);
+  --border-hover: rgba(255, 0, 77, 0.3);
+  
+  --primary: #FF004D;
+  --primary-hover: #E60045;
+  --secondary: #7C3AED;
+  --accent: #F43F5E;
+  
+  --text-main: #111116;
+  --text-secondary: #5C5C70;
+  --text-muted: #8E8E9F;
+  
+  --glow-primary: rgba(255, 0, 77, 0.15);
+  --glow-secondary: rgba(124, 58, 237, 0.15);
+  --glow-card: rgba(0, 0, 0, 0.05);
+  
+  --card-shadow: 0 20px 40px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02), inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+  --blur-amount: 24px;
 }
 
 * {
@@ -24,23 +65,50 @@
 body {
   font-family: 'Outfit', sans-serif;
   background-color: var(--bg-color);
-  background-image:
-    linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.82)),
-    url('/new_background.png');
-  background-size: cover;
-  background-position: center center;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
   color: var(--text-main);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease;
+  position: relative;
+}
+
+/* Add an elegant glowing background mesh */
+body::before {
+  content: '';
+  position: absolute;
+  top: -10%;
+  left: 20%;
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, var(--glow-primary) 0%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(80px);
+}
+
+body::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 10%;
+  width: 40vw;
+  height: 40vw;
+  background: radial-gradient(circle, var(--glow-secondary) 0%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(80px);
 }
 
 a {
   color: var(--primary);
   text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--primary-hover);
 }
 
 button {
@@ -50,17 +118,18 @@ button {
   outline: none;
 }
 
-/* Custom Scrollbar for premium feel */
+/* Premium Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: var(--bg-color);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: var(--border-color);
+  border-radius: 20px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--text-muted);
 }

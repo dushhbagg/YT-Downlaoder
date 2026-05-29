@@ -1,37 +1,36 @@
 import os
 import json
-import threading
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-import yt_dlp
 import tempfile
-import uuid
 import static_ffmpeg
 
+# Import modular components
+import youtube_extractor
+import download_manager
+
 app = Flask(__name__)
+# Enable CORS for frontend cross-origin requests
 CORS(app)
 
 # Automatically download and register static ffmpeg and ffprobe in PATH
 static_ffmpeg.add_paths(weak=True)
 
-progress_store = {}
-
 def get_video_url():
+    """Extract and validate the YouTube video URL from query parameters."""
     video_url = (request.args.get('url') or '').strip()
     if not video_url or not video_url.startswith(('http://', 'https://')):
         return None
     return video_url
 
 def yt_dlp_base_opts():
+    """Generates the base options structure for yt-dlp including cookie loading."""
     cookies_path = os.path.join(os.path.dirname(__file__), 'cookies.txt')
-    print("--- YT-DLP INITIALIZATION LOGS ---")
-    print(f"Checking for cookies at: {cookies_path}")
     exists = os.path.exists(cookies_path)
-    print(f"Cookies file exists: {exists}")
     
     opts = {
-        'quiet': False,  # Changed to False to get full logs on Render
-        'no_warnings': False,
+        'quiet': True,
+        'no_warnings': True,
         'noplaylist': True,
         'retries': 3,
         'fragment_retries': 3,
@@ -48,142 +47,102 @@ def yt_dlp_base_opts():
     }
     
     if exists:
-        file_size = os.path.getsize(cookies_path)
-        print(f"Cookies file size: {file_size} bytes")
         opts['cookiefile'] = cookies_path
-        print("Loaded 'cookiefile' into ydl_opts successfully.")
-    else:
-        print("WARNING: cookies.txt was NOT loaded because the file does not exist at the path.")
         
-    print("---------------------------------")
     return opts
 
 @app.route('/info', methods=['GET'])
 def get_info():
+    """Returns detailed metadata and categorized download options for a YouTube video URL."""
     video_url = get_video_url()
     if not video_url:
         return jsonify({'error': 'Valid HTTP URL required'}), 400
 
-    ydl_opts = {
-        **yt_dlp_base_opts(),
-        'skip_download': True,
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            
-            response_data = {
-                'title': info.get('title', 'Unknown Title'),
-                'thumbnail': info.get('thumbnail', ''),
-                'author': info.get('uploader', info.get('channel', 'Unknown Author')),
-            }
-            return jsonify(response_data)
+        details = youtube_extractor.extract_video_details(video_url, yt_dlp_base_opts())
+        return jsonify(details)
     except Exception as e:
         print("Info fetch error:", str(e))
         return jsonify({'error': 'Failed to retrieve video info', 'details': str(e)}), 500
 
 @app.route('/start_download', methods=['GET'])
 def start_download():
+    """Spawns a multithreaded download process for the requested format combination."""
     video_url = get_video_url()
-    quality = request.args.get('quality', 'best')
     if not video_url:
         return jsonify({'error': 'Valid HTTP URL required'}), 400
 
-    job_id = uuid.uuid4().hex
-    progress_store[job_id] = {'status': 'starting', 'percent': 0}
-
-    def download_thread(j_id, url, q):
-        try:
-            temp_dir = tempfile.gettempdir()
-            output_template = os.path.join(temp_dir, f'yt_{j_id}.%(ext)s')
-
-            format_map = {
-                'best': 'bestvideo+bestaudio/best',
-                '2160p': 'bestvideo[height<=2160]+bestaudio/best',
-                '1440p': 'bestvideo[height<=1440]+bestaudio/best',
-                '1080p': 'bestvideo[height<=1080]+bestaudio/best',
-                '720p': 'bestvideo[height<=720]+bestaudio/best',
-                '480p': 'bestvideo[height<=480]+bestaudio/best',
-                'audio': 'bestaudio[ext=m4a]/bestaudio'
-            }
-            selected_format = format_map.get(q, format_map['best'])
-
-            def progress_hook(d):
-                if d['status'] == 'downloading':
-                    downloaded = d.get('downloaded_bytes', 0)
-                    total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
-                    if total > 0:
-                        percent = (downloaded / total) * 100
-                        progress_store[j_id]['percent'] = round(percent, 1)
-                        progress_store[j_id]['status'] = 'downloading'
-                elif d['status'] == 'finished':
-                    progress_store[j_id]['status'] = 'extracting' if q == 'audio' else 'merging'
-
-            ydl_opts = {
-                **yt_dlp_base_opts(),
-                'format': selected_format,
-                'outtmpl': output_template,
-                'progress_hooks': [progress_hook],
-                'concurrent_fragment_downloads': 10
-            }
-
-            if q == 'audio':
-                ydl_opts['postprocessors'] = [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'm4a',
-                }]
-            else:
-                ydl_opts['merge_output_format'] = 'mp4'
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                
-                expected_filename = ydl.prepare_filename(info)
-                file_base = os.path.splitext(expected_filename)[0]
-                
-                # yt-dlp might have output an .mkv or .webm or .mp4 file. Find exactly what it created.
-                import glob
-                matches = glob.glob(f"{file_base}.*")
-                if matches:
-                    expected_filename = matches[0]
-                
-                title = info.get('title', 'video')
-                safe_title = "".join(x for x in title if x.isalnum() or x in " -_")
-                
-                progress_store[j_id]['filepath'] = expected_filename
-                progress_store[j_id]['title'] = safe_title
-                progress_store[j_id]['status'] = 'completed'
-
-        except Exception as e:
-            print("Download error:", str(e))
-            progress_store[j_id]['status'] = 'error'
-            progress_store[j_id]['error'] = str(e)
-
-    t = threading.Thread(target=download_thread, args=(job_id, video_url, quality))
-    t.start()
+    format_id = request.args.get('format_id', 'best')
+    download_type = request.args.get('type', 'video_audio')
+    ext = request.args.get('ext', 'mp4')
     
-    return jsonify({"job_id": job_id})
+    bitrate_str = request.args.get('bitrate')
+    bitrate = int(bitrate_str) if bitrate_str and bitrate_str.isdigit() else None
+
+    try:
+        job_id = download_manager.start_download_job(
+            url=video_url,
+            format_id=format_id,
+            download_type=download_type,
+            ext=ext,
+            base_opts=yt_dlp_base_opts(),
+            bitrate=bitrate
+        )
+        return jsonify({"job_id": job_id})
+    except Exception as e:
+        print("Start download error:", str(e))
+        return jsonify({'error': 'Failed to start download job', 'details': str(e)}), 500
 
 @app.route('/progress', methods=['GET'])
 def get_progress():
+    """Checks the progress status (speed, percent, ETA, status) of an active background job."""
     job_id = request.args.get('job_id')
-    return jsonify(progress_store.get(job_id, {'status': 'not_found'}))
+    if not job_id:
+        return jsonify({'error': 'Job ID required'}), 400
+        
+    job_data = download_manager.progress_store.get(job_id)
+    if not job_data:
+        return jsonify({'status': 'not_found', 'error': 'Job not found'}), 404
+        
+    # Standard format: returns progress details
+    # We strip filepath to keep progress response secure and lightweight
+    progress_response = {k: v for k, v in job_data.items() if k != 'filepath'}
+    return jsonify(progress_response)
+
+@app.route('/cancel', methods=['GET'])
+def cancel_download():
+    """Flags an active download thread to abort immediately."""
+    job_id = request.args.get('job_id')
+    if not job_id:
+        return jsonify({'error': 'Job ID required'}), 400
+        
+    success = download_manager.cancel_download_job(job_id)
+    if success:
+        return jsonify({'success': True, 'message': 'Cancellation requested'})
+    return jsonify({'success': False, 'error': 'Job not found or already completed'}), 404
 
 @app.route('/get_file', methods=['GET'])
 def get_file():
+    """Serves the completed download file to the client browser."""
     job_id = request.args.get('job_id')
-    data = progress_store.get(job_id)
-    if not data or data['status'] != 'completed':
-        return "File not ready", 404
+    if not job_id:
+        return "Job ID required", 400
+        
+    job_data = download_manager.progress_store.get(job_id)
+    if not job_data or job_data.get('status') != 'completed':
+        return "File not ready or job not found", 404
     
-    filepath = data['filepath']
-    ext = os.path.splitext(filepath)[1] or '.mp4'
+    filepath = job_data['filepath']
+    ext = job_data.get('ext', 'mp4')
+    title = job_data.get('title', 'video')
+    
+    if not os.path.exists(filepath):
+        return "File does not exist on disk", 404
         
     return send_file(
         filepath,
         as_attachment=True,
-        download_name=f"{data['title']}{ext}"
+        download_name=f"{title}.{ext}"
     )
 
 if __name__ == '__main__':
