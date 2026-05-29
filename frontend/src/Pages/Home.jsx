@@ -4,6 +4,8 @@ import SearchInput from '../Components/SearchInput';
 import VideoInfo from '../Components/VideoInfo';
 import QueueManager from '../Components/QueueManager';
 import HistoryManager from '../Components/HistoryManager';
+import DiagnosticsPanel from '../Components/DiagnosticsPanel';
+
 
 function Home() {
   const [url, setUrl] = useState('');
@@ -17,12 +19,22 @@ function Home() {
   // Completed downloads log stored in browser
   const [downloadHistory, setDownloadHistory] = useState([]);
   
+  // Selected authentication source for bypassing bot filters
+  const [cookiesSource, setCookiesSource] = useState(() => {
+    return localStorage.getItem('yt_downloader_cookies_source') || 'cookies_txt';
+  });
+  
   // Theme state (loaded from local storage, default to 'dark')
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('yt_downloader_theme') || 'dark';
   });
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
+  // Persist cookiesSource
+  useEffect(() => {
+    localStorage.setItem('yt_downloader_cookies_source', cookiesSource);
+  }, [cookiesSource]);
 
   // Apply visual theme to HTML root element
   useEffect(() => {
@@ -56,7 +68,7 @@ function Home() {
     setVideoInfo(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/info?url=${encodeURIComponent(url)}`);
+      const response = await fetch(`${API_BASE_URL}/info?url=${encodeURIComponent(url)}&cookies_source=${cookiesSource}`);
       if (!response.ok) {
         let message = 'Failed to fetch video details. Ensure the URL is correct.';
         try {
@@ -88,7 +100,8 @@ function Home() {
       let startUrl = `${API_BASE_URL}/start_download?url=${encodeURIComponent(url)}` +
                      `&format_id=${encodeURIComponent(option.format_id)}` +
                      `&type=${option.type}` +
-                     `&ext=${option.format}`;
+                     `&ext=${option.format}` +
+                     `&cookies_source=${cookiesSource}`;
 
       if (option.bitrate) {
         startUrl += `&bitrate=${option.bitrate}`;
@@ -267,6 +280,13 @@ function Home() {
           handleDownload={handleDownload}
         />
       </div>
+
+      {/* Diagnostics & Administration panel */}
+      <DiagnosticsPanel 
+        API_BASE_URL={API_BASE_URL} 
+        cookiesSource={cookiesSource} 
+        setCookiesSource={setCookiesSource} 
+      />
 
       {/* Concurrent active queue manager panel */}
       <QueueManager 

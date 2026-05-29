@@ -869,3 +869,155 @@
     min-width: 65px;
   }
 }
+
+/* ----------------------------------
+   Diagnostics Dashboard Styling
+   ---------------------------------- */
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.2rem;
+  width: 100%;
+}
+
+.diag-card {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-color);
+  padding: 1.2rem;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px var(--glow-card);
+}
+
+.diag-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+}
+
+.diag-card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary);
+}
+
+.diag-card-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.5px;
+}
+
+.diag-card-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+/* Glowing pulses for indicators */
+.pulse-badge {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.pulse-badge.active {
+  background-color: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.pulse-badge.active::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+  animation: pulse-ring 1.5s cubic-bezier(0.215, 0.610, 0.355, 1) infinite;
+}
+
+.pulse-badge.blocked {
+  background-color: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+}
+
+.pulse-badge.blocked::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 50%;
+  border: 2px solid var(--danger);
+  animation: pulse-ring 1.5s cubic-bezier(0.215, 0.610, 0.355, 1) infinite;
+}
+
+.pulse-badge.warning {
+  background-color: var(--warning);
+  box-shadow: 0 0 8px var(--warning);
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.63); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.update-pulse-tag {
+  background: var(--warning);
+  color: #000;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  animation: blinker 1.5s linear infinite;
+}
+
+@keyframes blinker {
+  50% { opacity: 0.4; }
+}
+
+.diag-controls-row {
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+/* Netscape Cookies Drag & Drop Box */
+.drag-upload-zone {
+  border: 2px dashed var(--border-color);
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 18px;
+  padding: 2.2rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  height: 100%;
+  min-height: 135px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drag-upload-zone:hover, .drag-upload-zone.active {
+  border-color: var(--primary);
+  background: rgba(255, 0, 77, 0.03);
+  transform: scale(1.02);
+}
+
+@media (max-width: 768px) {
+  .diag-grid {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+  }
+  
+  .diag-controls-row {
+    flex-direction: column;
+    gap: 1.2rem;
+  }
+}
