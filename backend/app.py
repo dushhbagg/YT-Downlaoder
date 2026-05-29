@@ -1,5 +1,9 @@
 import os
+import sys
 import json
+# Insert current directory into Python search path to resolve imports on Render
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import tempfile
